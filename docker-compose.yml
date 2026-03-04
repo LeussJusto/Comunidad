@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: sistema_municipal_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sistema_municipal
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - sistema_municipal_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build: .
+    container_name: sistema_municipal_backend
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: sistema_municipal
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: on-failure
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - sistema_municipal_network
+
+volumes:
+  mysql_data:
+
+networks:
+  sistema_municipal_network:
+    driver: bridge
