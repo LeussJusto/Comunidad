@@ -4,6 +4,7 @@ import path from 'path';
 import { Event } from '@modules/events/infrastructure/entities/Event';
 import { Task } from '@modules/tasks/infrastructure/entities/Task';
 import { Evidence } from '@modules/tasks/infrastructure/entities/Evidence';
+import { EvidenceCategory, EvidenceType } from '@shared/enums';
 
 export class PDFService {
   private uploadsDir = path.join(process.cwd(), 'uploads', 'reports');
@@ -195,22 +196,106 @@ export class PDFService {
       doc.text(`Descripción: ${task.description}`);
       doc.moveDown(1.5);
 
+      const photos = evidences.filter(
+        (e) => e.type === EvidenceType.PHOTO && e.category === EvidenceCategory.EVIDENCE
+      );
+      const videos = evidences.filter(
+        (e) => e.type === EvidenceType.VIDEO || e.category === EvidenceCategory.INCIDENT
+      );
+      const audios = evidences.filter((e) => e.type === EvidenceType.AUDIO);
+      const vouchers = evidences.filter((e) => e.category === EvidenceCategory.VOUCHER);
+
+      const ensureSpace = (requiredHeight: number) => {
+        const bottom = doc.page.height - doc.page.margins.bottom;
+        if (doc.y + requiredHeight > bottom) {
+          doc.addPage();
+        }
+      };
+
+      const resolveEvidencePath = (filePathValue: string) => {
+        const normalized = filePathValue.replace(/\\/g, '/').replace(/^\/+/, '');
+
+        if (path.isAbsolute(filePathValue)) {
+          return filePathValue;
+        }
+
+        return normalized.startsWith('uploads/')
+          ? path.join(process.cwd(), normalized)
+          : path.join(process.cwd(), 'uploads', normalized);
+      };
+
+      const renderImageSection = (title: string, items: Evidence[], showAmount: boolean) => {
+        ensureSpace(40);
+        doc.font('Helvetica-Bold').fontSize(13).text(title, { underline: true });
+        doc.moveDown(0.4);
+
+        if (items.length === 0) {
+          doc.font('Helvetica').fontSize(10).text('No hay contenido');
+          doc.moveDown(0.8);
+          return;
+        }
+
+        items.forEach((item, index) => {
+          ensureSpace(320);
+          doc.font('Helvetica-Bold').fontSize(11).text(`${index + 1}. ${item.description || 'Sin descripción'}`);
+          doc.font('Helvetica').fontSize(10);
+          doc.text(`Fecha: ${new Date(item.createdAt).toLocaleDateString()}`);
+          doc.text(`Subido por: ${item.uploadedBy?.name || 'N/A'}`);
+          if (showAmount) {
+            doc.text(`Monto: S/ ${Number(item.amount || 0).toFixed(2)}`);
+          }
+
+          const absoluteFilePath = resolveEvidencePath(item.filePath);
+          if (fs.existsSync(absoluteFilePath)) {
+            try {
+              doc.moveDown(0.3);
+              const maxWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+              doc.image(absoluteFilePath, {
+                fit: [maxWidth, 220],
+                align: 'center',
+                valign: 'center',
+              });
+            } catch (error) {
+              doc.font('Helvetica').fontSize(10).text('No se pudo mostrar la imagen del archivo.');
+            }
+          } else {
+            doc.font('Helvetica').fontSize(10).text('Archivo no encontrado para mostrar imagen.');
+          }
+
+          doc.moveDown(1);
+        });
+      };
+
       // Evidencias
-      doc.fontSize(14).text('Evidencias Registradas', { underline: true });
+      doc.fontSize(14).font('Helvetica-Bold').text('Evidencias Registradas', { underline: true });
       doc.moveDown(0.5);
 
       if (evidences.length === 0) {
-        doc.fontSize(10).text('No se han registrado evidencias para esta tarea.');
+        doc.font('Helvetica').fontSize(10).text('No hay contenido');
       } else {
-        evidences.forEach((evidence, index) => {
-          doc.font('Helvetica-Bold').fontSize(12).text(`${index + 1}. ${evidence.type}`);
-          doc.font('Helvetica').fontSize(10);
-          doc.text(`   Fecha: ${new Date(evidence.createdAt).toLocaleDateString()}`);
-          doc.text(`   Subido por: ${evidence.uploadedBy?.name || 'N/A'}`);
-          doc.text(`   Descripción: ${evidence.description || 'Sin descripción'}`);
-          doc.text(`   Archivo: ${path.basename(evidence.filePath)}`);
-          doc.moveDown(0.5);
-        });
+        renderImageSection('Fotos', photos, false);
+
+        ensureSpace(40);
+        doc.font('Helvetica-Bold').fontSize(13).text('Audios', { underline: true });
+        doc.moveDown(0.4);
+        if (audios.length === 0) {
+          doc.font('Helvetica').fontSize(10).text('No hay contenido');
+        } else {
+          doc.font('Helvetica').fontSize(10).text(`Cantidad de audios: ${audios.length}`);
+        }
+        doc.moveDown(0.8);
+
+        ensureSpace(40);
+        doc.font('Helvetica-Bold').fontSize(13).text('Videos', { underline: true });
+        doc.moveDown(0.4);
+        if (videos.length === 0) {
+          doc.font('Helvetica').fontSize(10).text('No hay contenido');
+        } else {
+          doc.font('Helvetica').fontSize(10).text(`Cantidad de videos: ${videos.length}`);
+        }
+        doc.moveDown(0.8);
+
+        renderImageSection('Vouchers', vouchers, true);
       }
 
       doc.moveDown(1.5);
