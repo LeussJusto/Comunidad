@@ -21,9 +21,33 @@ export const AppDataSource = new DataSource({
   subscribers: [],
 });
 
+const seedDefaultPresidentUser = async () => {
+  // Seed idempotente: inserta solo si no existe el código de usuario.
+  await AppDataSource.query(
+    `
+    INSERT INTO users (id, code, password, name, email, phone, role, isActive)
+    SELECT UUID(), ?, ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM users WHERE code = ?
+    )
+    `,
+    [
+      '74664032',
+      '$2a$12$QIZXtfsvpll9eHzVoN3pk.4toZPkvz9TpAGxtJRkuWI28zFbxcWkq',
+      'Leonardo Manuel Justo Jurado',
+      'leuss1224@gmail.com',
+      '924783804',
+      'president',
+      1,
+      '74664032',
+    ]
+  );
+};
+
 export const initDatabase = async () => {
   try {
     await AppDataSource.initialize();
+    await seedDefaultPresidentUser();
     console.log('✅ Database connected successfully');
   } catch (error) {
     console.error('❌ Database connection failed:', error);
